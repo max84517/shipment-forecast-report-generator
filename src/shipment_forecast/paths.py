@@ -17,6 +17,7 @@ SOURCE_DATA_DIR = DATA_DIR / "source_data"
 REPORT_DIR = DATA_DIR / "report"
 HISTORY_DIR = DATA_DIR / "history"
 OUTPUT_DIR = DATA_DIR / "output"
+CONFIG_FILE = ROOT / "config.json"
 
 
 def ensure_dirs() -> None:

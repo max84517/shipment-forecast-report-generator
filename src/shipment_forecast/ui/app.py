@@ -14,7 +14,9 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import tkinter as tk
 
-from shipment_forecast.paths import HISTORY_DIR, OUTPUT_DIR, REPORT_DIR, ensure_dirs
+import json
+
+from shipment_forecast.paths import HISTORY_DIR, OUTPUT_DIR, REPORT_DIR, CONFIG_FILE, ensure_dirs
 import shipment_forecast.processing.consolidate as consolidate_mod
 
 # ── theme ─────────────────────────────────────────────────────────────────────
@@ -58,55 +60,53 @@ def _detect_suppliers(root: Path) -> list[str]:
 # ── Supplier row widget ───────────────────────────────────────────────────────
 
 class SupplierRow(ctk.CTkFrame):
-    """One row per supplier: checkbox + source-type slider + detected file dropdown."""
-
-    SOURCE_TYPES = [SUBFOLDER_NAMES["monthly"], SUBFOLDER_NAMES["spending"]]
+    """One row per supplier: checkbox + segmented source button + file dropdown."""
 
     def __init__(self, master, supplier: str, supplier_root: Path, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
         self.supplier = supplier
         self.supplier_root = supplier_root
+        self.columnconfigure(0, minsize=170)
+        self.columnconfigure(1, minsize=185)
+        self.columnconfigure(2, weight=1)
 
         self._enabled = ctk.BooleanVar(value=True)
-        self._source_idx = ctk.IntVar(value=0)  # 0=monthly, 1=spending
+        self._source_key = "monthly"  # "monthly" | "spending"
         self._selected_file: Path | None = None
         self._available_files: list[Path] = []
 
         # ── checkbox ──────────────────────────────────────────────────────────
         self.chk = ctk.CTkCheckBox(
             self, text=supplier, variable=self._enabled,
-            width=150, command=self._on_toggle,
+            width=160, font=("Arial", 12), command=self._on_toggle,
         )
-        self.chk.grid(row=0, column=0, padx=(0, 6), sticky="w")
+        self.chk.grid(row=0, column=0, padx=(8, 4), sticky="w")
 
-        # ── source type slider ────────────────────────────────────────────────
-        slider_frame = ctk.CTkFrame(self, fg_color="transparent")
-        slider_frame.grid(row=0, column=1, padx=(0, 6))
-
-        ctk.CTkLabel(slider_frame, text="Monthly", width=54, anchor="e", font=("Arial", 11)).grid(row=0, column=0)
-        self.slider = ctk.CTkSlider(
-            slider_frame, from_=0, to=1, number_of_steps=1, width=50,
-            variable=self._source_idx, command=self._on_slider,
+        # ── source type segmented button ──────────────────────────────────────
+        self.src_btn = ctk.CTkSegmentedButton(
+            self, values=["Monthly", "Spending"],
+            command=self._on_source_change,
+            width=170, font=("Arial", 11),
+            selected_color="#1f6aa5", selected_hover_color="#1a5a8a",
         )
-        self.slider.grid(row=0, column=1, padx=3)
-        ctk.CTkLabel(slider_frame, text="Spending", width=54, anchor="w", font=("Arial", 11)).grid(row=0, column=2)
+        self.src_btn.set("Monthly")
+        self.src_btn.grid(row=0, column=1, padx=(4, 8), sticky="w")
 
         # ── file dropdown button ───────────────────────────────────────────────
         self._file_var = ctk.StringVar(value="—")
         self.file_btn = ctk.CTkButton(
-            self, textvariable=self._file_var, width=270,
+            self, textvariable=self._file_var,
             fg_color=("#2b2b2b", "#2b2b2b"), hover_color=("#3a3a3a", "#3a3a3a"),
             anchor="w", font=("Arial", 11), command=self._show_file_menu,
         )
-        self.file_btn.grid(row=0, column=2, padx=(0, 2))
+        self.file_btn.grid(row=0, column=2, padx=(0, 8), sticky="ew")
 
         self._refresh_file_list()
 
     # ── internals ──────────────────────────────────────────────────────────────
 
     def _source_folder(self) -> Path:
-        key = "monthly" if self._source_idx.get() == 0 else "spending"
-        target_name = SUBFOLDER_NAMES[key].lower()
+        target_name = SUBFOLDER_NAMES[self._source_key].lower()
         supplier_dir = self.supplier_root / self.supplier
         for d in supplier_dir.iterdir():
             if d.is_dir() and d.name.lower() == target_name:
@@ -128,19 +128,20 @@ class SupplierRow(ctk.CTkFrame):
             self._selected_file = None
             self._file_var.set("(no Excel found)")
 
-    def _on_slider(self, _=None):
+    def _on_source_change(self, value: str):
+        self._source_key = "monthly" if value == "Monthly" else "spending"
         self._refresh_file_list()
 
     def _on_toggle(self):
         state = "normal" if self._enabled.get() else "disabled"
-        self.slider.configure(state=state)
+        self.src_btn.configure(state=state)
         self.file_btn.configure(state=state)
 
     def _show_file_menu(self):
         if not self._available_files:
             return
         menu = tk.Menu(self, tearoff=0, bg="#2b2b2b", fg="white",
-                       activebackground="#3a3a3a", activeforeground="white")
+                       activebackground="#1f6aa5", activeforeground="white")
         for f in self._available_files:
             menu.add_command(
                 label=f.name,
@@ -171,16 +172,19 @@ class SupplierRow(ctk.CTkFrame):
 class PathSelector(ctk.CTkFrame):
     def __init__(self, master, label: str, default: Path, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
+        self.columnconfigure(1, weight=1)
         self._var = ctk.StringVar(value=str(default))
-        ctk.CTkLabel(self, text=label, width=150, anchor="w", font=("Arial", 11)).grid(row=0, column=0)
-        ctk.CTkEntry(self, textvariable=self._var, width=330, font=("Arial", 11)).grid(row=0, column=1, padx=4)
-        ctk.CTkButton(self, text="Browse", width=65, height=28, command=self._browse).grid(row=0, column=2)
+        ctk.CTkLabel(self, text=label, width=130, anchor="w",
+                     font=("Arial", 11)).grid(row=0, column=0, padx=(4, 0))
+        ctk.CTkEntry(self, textvariable=self._var,
+                     font=("Arial", 11)).grid(row=0, column=1, padx=4, sticky="ew")
+        ctk.CTkButton(self, text="Browse", width=70, height=28,
+                      command=self._browse).grid(row=0, column=2, padx=(0, 4))
 
     def _browse(self):
         chosen = filedialog.askdirectory(initialdir=self._var.get())
         if chosen:
             self._var.set(chosen)
-
     @property
     def path(self) -> Path:
         return Path(self._var.get())
@@ -273,74 +277,126 @@ class MergeDialog(ctk.CTkToplevel):
 
 # ── Main UI ───────────────────────────────────────────────────────────────────
 
+# ── config helpers ───────────────────────────────────────────────────────────
+
+def _load_config() -> dict:
+    try:
+        if CONFIG_FILE.exists():
+            return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _save_config(data: dict) -> None:
+    try:
+        CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+# ── Main UI ───────────────────────────────────────────────────────────────────
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         ensure_dirs()
         self.title("Shipment Forecast Report Generator")
-        self.geometry("900x580")
+        self.geometry("960x590")
         self.resizable(True, True)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._supplier_root: Path | None = None
         self._supplier_rows: list[SupplierRow] = []
+        self._cfg = _load_config()
 
         self._build_ui()
+        self._apply_config()
 
     # ── UI construction ───────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # ── top: source root path ─────────────────────────────────────────────
+        P = 14  # standard horizontal padding
+
+        # ── supplier root row ─────────────────────────────────────────────────
         top = ctk.CTkFrame(self)
-        top.pack(fill="x", padx=16, pady=(14, 4))
+        top.pack(fill="x", padx=P, pady=(12, 4))
+        top.columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(top, text="Supplier Root:", width=110, anchor="w").grid(row=0, column=0, padx=(4, 4))
+        ctk.CTkLabel(top, text="Supplier Root:", width=120, anchor="w",
+                     font=("Arial", 12)).grid(row=0, column=0, padx=(6, 4), pady=6)
         self._root_var = ctk.StringVar(value="")
-        ctk.CTkEntry(top, textvariable=self._root_var, width=390).grid(row=0, column=1, padx=4)
-        ctk.CTkButton(top, text="Browse", width=65, height=28, command=self._browse_root).grid(row=0, column=2, padx=4)
-        ctk.CTkButton(top, text="Load Suppliers", width=105, height=28, command=self._load_suppliers).grid(row=0, column=3, padx=6)
+        ctk.CTkEntry(top, textvariable=self._root_var,
+                     font=("Arial", 11)).grid(row=0, column=1, padx=4, pady=6, sticky="ew")
+        ctk.CTkButton(top, text="Browse", width=75, height=30,
+                      command=self._browse_root).grid(row=0, column=2, padx=4, pady=6)
+        ctk.CTkButton(top, text="Load Suppliers", width=115, height=30,
+                      command=self._load_suppliers).grid(row=0, column=3, padx=(4, 6), pady=6)
 
-        # ── supplier list ──────────────────────────────────────────────────────
-        self._supplier_frame_outer = ctk.CTkScrollableFrame(self, label_text="Suppliers", height=185)
-        self._supplier_frame_outer.pack(fill="both", padx=14, pady=(4, 2), expand=False)
+        # ── supplier list ─────────────────────────────────────────────────────
+        self._supplier_frame_outer = ctk.CTkScrollableFrame(
+            self, label_text="Suppliers", height=190,
+            label_font=("Arial", 12, "bold"),
+        )
+        self._supplier_frame_outer.pack(fill="both", padx=P, pady=(2, 4), expand=False)
 
-        # ── path selectors ─────────────────────────────────────────────────────
+        # ── output path selectors ─────────────────────────────────────────────
         paths_frame = ctk.CTkFrame(self)
-        paths_frame.pack(fill="x", padx=14, pady=2)
+        paths_frame.pack(fill="x", padx=P, pady=(0, 4))
+        paths_frame.columnconfigure(0, weight=1)
         self._output_sel = PathSelector(paths_frame, "Data Output:", OUTPUT_DIR)
-        self._output_sel.pack(fill="x", padx=6, pady=2)
+        self._output_sel.grid(row=0, column=0, sticky="ew", padx=6, pady=2)
         self._report_sel = PathSelector(paths_frame, "Report Output:", REPORT_DIR)
-        self._report_sel.pack(fill="x", padx=6, pady=2)
+        self._report_sel.grid(row=1, column=0, sticky="ew", padx=6, pady=2)
 
         # ── progress bar ──────────────────────────────────────────────────────
         prog_frame = ctk.CTkFrame(self, fg_color="transparent")
-        prog_frame.pack(fill="x", padx=14, pady=(4, 0))
+        prog_frame.pack(fill="x", padx=P, pady=(2, 0))
         self._prog_bar = ctk.CTkProgressBar(prog_frame)
         self._prog_bar.pack(fill="x", side="left", expand=True, padx=(0, 8))
         self._prog_bar.set(0)
-        self._prog_label = ctk.CTkLabel(prog_frame, text="Idle", width=180, anchor="w",
+        self._prog_label = ctk.CTkLabel(prog_frame, text="Idle", width=200, anchor="w",
                                         font=("Arial", 11))
         self._prog_label.pack(side="left")
 
-        # ── status / log area ──────────────────────────────────────────────────
+        # ── log area ──────────────────────────────────────────────────────────
         self._log = ctk.CTkTextbox(self, height=85, state="disabled", wrap="word",
                                    font=("Consolas", 11))
-        self._log.pack(fill="x", padx=14, pady=(4, 2))
+        self._log.pack(fill="x", padx=P, pady=(4, 2))
 
-        # ── action buttons ─────────────────────────────────────────────────────
+        # ── action buttons ────────────────────────────────────────────────────
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
-        btn_row.pack(pady=6)
-        ctk.CTkButton(btn_row, text="Consolidate Monthly Data", width=200,
-                      command=self._start_consolidate).pack(side="left", padx=10)
-        ctk.CTkButton(btn_row, text="Merge Data", width=130, fg_color="#2a6496",
-                      command=self._start_merge).pack(side="left", padx=10)
+        btn_row.pack(pady=8)
+        ctk.CTkButton(btn_row, text="Consolidate Monthly Data", width=210, height=34,
+                      font=("Arial", 12),
+                      command=self._start_consolidate).pack(side="left", padx=12)
+        ctk.CTkButton(btn_row, text="Merge Data", width=140, height=34,
+                      font=("Arial", 12), fg_color="#2a6496",
+                      command=self._start_merge).pack(side="left", padx=12)
+
+    # ── config load / save ────────────────────────────────────────────────────
+
+    def _apply_config(self):
+        if "supplier_root" in self._cfg:
+            self._root_var.set(self._cfg["supplier_root"])
+        if "output_path" in self._cfg:
+            self._output_sel._var.set(self._cfg["output_path"])
+        if "report_path" in self._cfg:
+            self._report_sel._var.set(self._cfg["report_path"])
+
+    def _persist_config(self):
+        self._cfg["supplier_root"] = self._root_var.get()
+        self._cfg["output_path"] = str(self._output_sel.path)
+        self._cfg["report_path"] = str(self._report_sel.path)
+        _save_config(self._cfg)
 
     # ── browse / load suppliers ───────────────────────────────────────────────
 
     def _browse_root(self):
-        chosen = filedialog.askdirectory()
+        chosen = filedialog.askdirectory(initialdir=self._root_var.get() or None)
         if chosen:
             self._root_var.set(chosen)
+            self._persist_config()
 
     def _load_suppliers(self):
         root = Path(self._root_var.get())
@@ -361,16 +417,23 @@ class App(ctk.CTk):
 
         # Header row
         hdr = ctk.CTkFrame(self._supplier_frame_outer, fg_color="transparent")
-        hdr.pack(fill="x", pady=(0, 4))
-        ctk.CTkLabel(hdr, text="Supplier", width=150, anchor="w", font=("Arial", 11, "bold")).grid(row=0, column=0)
-        ctk.CTkLabel(hdr, text="Source Type", width=170, anchor="w", font=("Arial", 11, "bold")).grid(row=0, column=1)
-        ctk.CTkLabel(hdr, text="Selected File", width=270, anchor="w", font=("Arial", 11, "bold")).grid(row=0, column=2)
+        hdr.pack(fill="x", pady=(0, 2))
+        hdr.columnconfigure(0, minsize=170)
+        hdr.columnconfigure(1, minsize=185)
+        hdr.columnconfigure(2, weight=1)
+        ctk.CTkLabel(hdr, text="Supplier", anchor="w",
+                     font=("Arial", 11, "bold")).grid(row=0, column=0, padx=(8, 4), sticky="w")
+        ctk.CTkLabel(hdr, text="Source Type", anchor="w",
+                     font=("Arial", 11, "bold")).grid(row=0, column=1, padx=(4, 8), sticky="w")
+        ctk.CTkLabel(hdr, text="Selected File", anchor="w",
+                     font=("Arial", 11, "bold")).grid(row=0, column=2, padx=(0, 8), sticky="w")
 
         for sup in suppliers:
             row = SupplierRow(self._supplier_frame_outer, sup, root)
-            row.pack(fill="x", pady=2)
+            row.pack(fill="x", pady=1)
             self._supplier_rows.append(row)
 
+        self._persist_config()
         self._log_msg(f"Detected {len(suppliers)} supplier(s): {', '.join(suppliers)}")
 
     # ── logging / progress ────────────────────────────────────────────────────
@@ -560,6 +623,7 @@ class App(ctk.CTk):
     # ── close ─────────────────────────────────────────────────────────────────
 
     def _on_close(self):
+        self._persist_config()
         self.destroy()
         sys.exit(0)
 
