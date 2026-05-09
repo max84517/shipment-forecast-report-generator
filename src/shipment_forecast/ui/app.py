@@ -195,11 +195,12 @@ class PathSelector(ctk.CTkFrame):
 class MergeDialog(ctk.CTkToplevel):
     """Show available history files; let user pick which to merge."""
 
-    def __init__(self, master, history_files: list[Path], on_confirm: Callable[[Path], None]):
+    def __init__(self, master, history_files: list[Path], output_dir: Path, on_confirm: Callable[[Path], None]):
         super().__init__(master)
         self.title("Merge History Files")
         self.resizable(False, False)
         self._on_confirm = on_confirm
+        self._output_dir = output_dir
         self._vars: dict[Path, ctk.BooleanVar] = {}
         self._history_files = history_files
 
@@ -241,6 +242,7 @@ class MergeDialog(ctk.CTkToplevel):
             try:
                 out = consolidate_mod.merge_and_save(
                     selected,
+                    output_dir=self._output_dir,
                     progress_cb=lambda i: self.after(
                         0, lambda i=i: self._update_prog(
                             i / total, f"Reading {selected[i].stem}..."
@@ -708,7 +710,7 @@ class App(ctk.CTk):
             self._log_msg(f"Merged output saved: {out}")
             messagebox.showinfo("Done", f"Merged file saved:\n{out}")
 
-        MergeDialog(self, history_files, _on_done)
+        MergeDialog(self, history_files, self._output_sel.path, _on_done)
 
     # ── report generation ──────────────────────────────────────────────────────
 
@@ -738,7 +740,10 @@ class App(ctk.CTk):
 
         def _work():
             try:
-                out = consolidate_mod.generate_report(history_path, supplier_order)
+                out = consolidate_mod.generate_report(
+                    history_path, supplier_order,
+                    report_dir=self._report_sel.path,
+                )
                 self.after(0, lambda p=str(out): (
                     self._set_progress(1.0, "Done!"),
                     self._log_msg(f"Report saved: {p}"),

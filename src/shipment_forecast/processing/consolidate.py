@@ -370,11 +370,13 @@ def list_history_files() -> list[Path]:
 
 def merge_and_save(
     selected_paths: list[Path],
+    output_dir: Path | None = None,
     progress_cb: "Callable[[int], None] | None" = None,
 ) -> Path:
-    """Merge selected history files and write to output/forecast data.xlsx."""
+    """Merge selected history files and write to output_dir/forecast data.xlsx."""
     from typing import Callable  # noqa: F401 – used in type hint string above
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = output_dir if output_dir else OUTPUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
     dfs: list[pd.DataFrame] = []
     for i, p in enumerate(selected_paths):
         if progress_cb:
@@ -385,10 +387,10 @@ def merge_and_save(
             df["_source"] = p.stem
             dfs.append(df)
     if not dfs:
-        return OUTPUT_DIR / "forecast data.xlsx"
+        return out_dir / "forecast data.xlsx"
     merged = pd.concat(dfs, ignore_index=True)
     merged.drop(columns=["_source"], inplace=True, errors="ignore")
-    out = OUTPUT_DIR / "forecast data.xlsx"
+    out = out_dir / "forecast data.xlsx"
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         merged.to_excel(writer, sheet_name="Forecast Data", index=False)
     return out
@@ -397,7 +399,7 @@ def merge_and_save(
 # ── report generation ─────────────────────────────────────────────────────────
 
 
-def generate_report(history_path: Path, supplier_order: list[str]) -> Path:
+def generate_report(history_path: Path, supplier_order: list[str], report_dir: Path | None = None) -> Path:
     """
     Generate Keyboard and Peripheral sheets, each containing two pivot tables
     (Rebate Amount on top, Q'ty below with 3 blank rows gap).
@@ -443,8 +445,9 @@ def generate_report(history_path: Path, supplier_order: list[str]) -> Path:
 
     # Output path: "Rolling Forecast FY26 05" → "forecast pivot FY26 05"
     out_name = history_path.stem.replace("Rolling Forecast", "forecast pivot")
-    out_path = REPORT_DIR / f"{out_name}.xlsx"
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    rpt_dir = report_dir if report_dir else REPORT_DIR
+    out_path = rpt_dir / f"{out_name}.xlsx"
+    rpt_dir.mkdir(parents=True, exist_ok=True)
 
     wb = openpyxl.Workbook()
 
