@@ -9,6 +9,10 @@ build/
 # Virtual environment
 .venv/
 
+# PyInstaller
+*.spec
+build_exe.bat
+
 # Data (keep folders, ignore contents)
 data/source_data/*
 data/report/*
