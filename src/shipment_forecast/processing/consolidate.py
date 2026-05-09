@@ -230,14 +230,26 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
 
 
 def clear_and_copy_sources(file_paths: list[Path]) -> list[Path]:
-    """Clear source_data dir and copy given files into it."""
-    if SOURCE_DATA_DIR.exists():
-        shutil.rmtree(SOURCE_DATA_DIR)
-    SOURCE_DATA_DIR.mkdir(parents=True)
+    """Clear source_data dir contents and copy given files into it.
+
+    Avoids shutil.rmtree on the directory itself to prevent WinError 5
+    on OneDrive-synced paths where the folder is locked by the sync client.
+    """
+    SOURCE_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    # Delete existing files one by one (don't remove the directory)
+    for existing in SOURCE_DATA_DIR.iterdir():
+        try:
+            if existing.is_file():
+                existing.unlink()
+            elif existing.is_dir():
+                shutil.rmtree(existing, ignore_errors=True)
+        except OSError:
+            pass  # skip locked files silently
+
     copied: list[Path] = []
     for src in file_paths:
         dst = SOURCE_DATA_DIR / src.name
-        # If duplicate name, suffix with supplier folder name
+        # If duplicate name, prefix with supplier folder name
         if dst.exists():
             dst = SOURCE_DATA_DIR / f"{src.parent.parent.name}_{src.name}"
         shutil.copy2(src, dst)
