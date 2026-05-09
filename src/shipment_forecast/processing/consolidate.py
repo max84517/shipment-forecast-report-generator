@@ -197,51 +197,43 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
         if col in feat_df.columns:
             feat_df[col] = feat_df[col].replace("", pd.NA).ffill()
 
-    # Drop rows where all feature cols are null/empty (catches pre-ffill phantom rows)
+    # Drop rows where all feature cols are null/empty (phantom trailing rows)
     feat_df = feat_df.dropna(how="all")
 
-    # Secondary guard: after ffill, Category/Segment/Series may have been filled into
-    # phantom rows that have NO data in any other column. Drop rows where fewer than
-    # 2 non-fill-down columns have values (a single stray cell like a Refresh button
-    # would only have 1 non-null value and must be removed).
-    fill_down_cols = {"Category", "Segment", "Series"}
-    non_fill_cols = [c for c in feat_df.columns if c not in fill_down_cols]
-    if non_fill_cols:
-        # Count how many non-fill-down cols have a real (non-null, non-empty) value
-        real_val = feat_df[non_fill_cols].replace("", pd.NA).notna()
-        sufficient = real_val.sum(axis=1) >= 2
-        feat_df = feat_df[sufficient].reset_index(drop=True)
+    # Secondary guard: drop rows where neither GTK Suppliers nor Supplier Part#
+    # has a real value — these are phantom / artifact rows (e.g. "Refresh" buttons).
+    # Use GTK Suppliers keyword blocklist FIRST, then require at least one anchor col.
+    _ARTIFACTS = {"refresh", "total", "note", "notes", "subtotal",
+                  "click", "update", "button", "reset"}
 
-    # Drop rows where GTK Suppliers looks like a UI artifact (single short token,
-    # e.g. "Refresh", "Total", "Note") rather than an actual supplier name.
+    def _is_artifact(val) -> bool:
+        if pd.isna(val):
+            return False
+        s = str(val).strip()
+        return s.lower() in _ARTIFACTS
+
     if "GTK Suppliers" in feat_df.columns:
-        def _looks_like_data(val) -> bool:
-            if pd.isna(val) or str(val).strip() == "":
-                return False  # empty is fine — will be caught by above guard
-            s = str(val).strip()
-            # Reject single words that are purely alphabetic and shorter than 4 chars,
-            # or known UI-artifact keywords.
-            _ARTIFACTS = {"refresh", "total", "note", "notes", "subtotal",
-                          "click", "update", "button", "reset"}
-            if s.lower() in _ARTIFACTS:
-                return False
-            return True
-        mask = feat_df["GTK Suppliers"].apply(_looks_like_data)
-        feat_df = feat_df[mask].reset_index(drop=True)
+        feat_df = feat_df[~feat_df["GTK Suppliers"].apply(_is_artifact)]
+
+    # Require at least one "anchor" identifier column to be non-null/non-empty.
+    # This avoids dropping real rows where only one column is filled.
+    anchor_cols = [c for c in ("GTK Suppliers", "Supplier Part#", "HP/ODM Part#", "ODM")
+                   if c in feat_df.columns]
+    if anchor_cols:
+        has_anchor = feat_df[anchor_cols].replace("", pd.NA).notna().any(axis=1)
+        feat_df = feat_df[has_anchor]
 
     if feat_df.empty:
         wb.close()
         return pd.DataFrame()
 
-    # ── build value columns aligned to feat_df ───────────────────────────────
-    # feat_df has been filtered; we need to re-extract value cols using the
-    # same boolean mask so rows match correctly.
-    # Re-build a filtered value df from df_raw using the non-fill mask index.
-    value_df = df_raw.copy()
-    # Keep only rows that survived the feature filter (by positional index)
-    value_df = value_df.iloc[feat_df.index] if not feat_df.empty else value_df.iloc[:0]
-    value_df = value_df.reset_index(drop=True)
+    # ── build value columns aligned to surviving feat_df rows ─────────────────
+    # IMPORTANT: save original df_raw indices BEFORE any reset_index so that
+    # value_df rows are always correctly matched to feat_df rows.
+    surviving_idx = feat_df.index  # original positional indices into df_raw
     feat_df = feat_df.reset_index(drop=True)
+
+    value_df = df_raw.iloc[surviving_idx].reset_index(drop=True)
 
     # ── pivot value cols: one row per (feature combo, month) ─────────────────
     # Group value columns by month, collect {month: {vtype: col}}
