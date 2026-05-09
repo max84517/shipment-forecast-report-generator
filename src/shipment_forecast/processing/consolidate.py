@@ -215,13 +215,12 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
     if "GTK Suppliers" in feat_df.columns:
         feat_df = feat_df[~feat_df["GTK Suppliers"].apply(_is_artifact)]
 
-    # Require at least one "anchor" identifier column to be non-null/non-empty.
-    # This avoids dropping real rows where only one column is filled.
-    anchor_cols = [c for c in ("GTK Suppliers", "Supplier Part#", "HP/ODM Part#", "ODM")
-                   if c in feat_df.columns]
-    if anchor_cols:
-        has_anchor = feat_df[anchor_cols].replace("", pd.NA).notna().any(axis=1)
-        feat_df = feat_df[has_anchor]
+    # Require BOTH "Platforms" AND "SPM" to have a real value.
+    # Rows missing either are considered header artifacts / summary rows and dropped.
+    anchor_must_all = [c for c in ("Platforms", "SPM") if c in feat_df.columns]
+    if anchor_must_all:
+        has_all = feat_df[anchor_must_all].replace("", pd.NA).notna().all(axis=1)
+        feat_df = feat_df[has_all]
 
     if feat_df.empty:
         wb.close()
