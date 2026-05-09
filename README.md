@@ -14,9 +14,9 @@ A desktop tool (CustomTkinter dark-mode UI) for consolidating supplier monthly f
 - **Structured data pipeline**:
   1. Copies source files to `data/source_data/` (cleared before each run).
   2. Reads the chosen FY sheet; fills down merged cells (Category / Segment / Series).
-  3. Extracts feature columns + value columns (`Table Price`, `Unit Rebate`, `Q'ty`, `Rebate Amount`).
+  3. Extracts feature columns + value columns (`Table Price`, `Unit Rebate`, `Q'ty`, `Rebate Amount`). Handles Excel files with duplicate header names caused by merged-cell forward-fill using positional indexing.
   4. Melts into long format (one row per feature combo × month).
-  5. Adds `FY` (e.g. `FY26 Q2`), `Year`, and `Month` columns.
+  5. Adds `FY` (e.g. `FY26 Q2`), `Year`, `Month`, and `Forecast Date` (e.g. `FY26 05`) columns.
   6. Saves to `data/history/Rolling Forecast FYXX MM.xlsx`.
 - **History merge**: Select any combination of saved Rolling Forecast files to merge into `data/output/forecast data.xlsx`.
 - **Standalone Merge button**: Access the merge dialog at any time without re-running consolidation.

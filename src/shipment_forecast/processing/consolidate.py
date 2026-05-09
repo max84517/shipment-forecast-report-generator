@@ -189,7 +189,10 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
             seen_canonical.add(canon)
             deduped_feat_cols.append(col)
 
-    feat_df = df_raw[deduped_feat_cols].copy()
+    # Use positional selection to avoid pandas selecting ALL columns with the
+    # same name when the Excel header has duplicate entries (merged-cell forward-fill).
+    feat_col_positions = [headers.index(c) for c in deduped_feat_cols]
+    feat_df = df_raw.iloc[:, feat_col_positions].copy()
     feat_df.columns = [feature_map[c] for c in deduped_feat_cols]
 
     # Forward-fill merged cell columns
@@ -247,7 +250,11 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
         for vt in VALUE_KEYWORDS:
             actual_col = vtype_cols.get(vt)
             if actual_col:
-                col_data = value_df[actual_col] if actual_col in value_df.columns else pd.Series(dtype=float)
+                # Use positional indexing to avoid duplicate-name ambiguity
+                if actual_col in headers:
+                    col_data = value_df.iloc[:, headers.index(actual_col)]
+                else:
+                    col_data = pd.Series(dtype=float)
                 m_df[vt] = pd.to_numeric(col_data, errors="coerce").fillna(0).values
             else:
                 m_df[vt] = 0
