@@ -12,6 +12,8 @@ build/
 # PyInstaller
 *.spec
 build_exe.bat
+dist/
+ShipmentForecast.zip
 
 # Data (keep folders, ignore contents)
 data/source_data/*
