@@ -1,0 +1,24 @@
+[project]
+name = "shipment-forecast-report-generator"
+version = "0.1.0"
+description = "Supplier monthly forecast consolidation tool"
+authors = [
+    {name = "max84517"}
+]
+requires-python = "^3.11"
+dependencies = [
+    "customtkinter (>=5.2.2,<6.0.0)",
+    "openpyxl (>=3.1.5,<4.0.0)",
+    "pandas (>=3.0.2,<4.0.0)"
+]
+
+
+[project.scripts]
+shipment-forecast = "shipment_forecast.main:main"
+
+[tool.poetry]
+packages = [{include = "shipment_forecast", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
