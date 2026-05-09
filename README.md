@@ -51,7 +51,18 @@ shipment-forecast-report-generator/
 
 ---
 
-## Setup
+## Quick Start (No Python required)
+
+1. Go to the [Releases page](https://github.com/max84517/shipment-forecast-report-generator/releases/latest)
+2. Download **`ShipmentForecast.zip`**
+3. Extract the zip — you will get a `ShipmentForecast\` folder
+4. Run **`ShipmentForecast\ShipmentForecast.exe`**
+
+> Keep the entire `ShipmentForecast\` folder together — the exe depends on the files next to it.
+
+---
+
+## Setup (Development)
 
 ### Prerequisites
 
