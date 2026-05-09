@@ -84,12 +84,12 @@ class SupplierRow(ctk.CTkFrame):
 
         # ── source type segmented button ──────────────────────────────────────
         self.src_btn = ctk.CTkSegmentedButton(
-            self, values=["Monthly", "Spending"],
+            self, values=["Forecast", "Shipment"],
             command=self._on_source_change,
             width=148, font=("Arial", 11),
             selected_color="#1f6aa5", selected_hover_color="#1a5a8a",
         )
-        self.src_btn.set("Monthly")
+        self.src_btn.set("Forecast")
         self.src_btn.grid(row=0, column=1, padx=(4, 8), sticky="w")
 
         # ── file dropdown button ───────────────────────────────────────────────
@@ -129,7 +129,7 @@ class SupplierRow(ctk.CTkFrame):
             self._file_var.set("(no Excel found)")
 
     def _on_source_change(self, value: str):
-        self._source_key = "monthly" if value == "Monthly" else "spending"
+        self._source_key = "monthly" if value == "Forecast" else "spending"
         self._refresh_file_list()
 
     def _on_toggle(self):
