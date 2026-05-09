@@ -501,6 +501,13 @@ class App(ctk.CTk):
 
                 merged = pd.concat(dfs, ignore_index=True)
 
+                # Add "Forecast Date" column, e.g. "FY26 05"
+                import calendar
+                month_num = str(
+                    [m.lower() for m in calendar.month_abbr].index(start_month.lower())
+                ).zfill(2)
+                merged["Forecast Date"] = f"{fy_sheet.upper()} {month_num}"
+
                 # Step 3: save
                 self.after(0, lambda: self._set_progress(0.92, "Saving to history..."))
                 out_path = consolidate_mod.save_to_history(merged, fy_sheet, start_month)
