@@ -67,7 +67,7 @@ class SupplierRow(ctk.CTkFrame):
         self.supplier = supplier
         self.supplier_root = supplier_root
         self.columnconfigure(0, minsize=170)
-        self.columnconfigure(1, minsize=185)
+        self.columnconfigure(1, minsize=155)
         self.columnconfigure(2, weight=1)
 
         self._enabled = ctk.BooleanVar(value=True)
@@ -86,7 +86,7 @@ class SupplierRow(ctk.CTkFrame):
         self.src_btn = ctk.CTkSegmentedButton(
             self, values=["Monthly", "Spending"],
             command=self._on_source_change,
-            width=170, font=("Arial", 11),
+            width=148, font=("Arial", 11),
             selected_color="#1f6aa5", selected_hover_color="#1a5a8a",
         )
         self.src_btn.set("Monthly")
@@ -302,7 +302,7 @@ class App(ctk.CTk):
         super().__init__()
         ensure_dirs()
         self.title("Shipment Forecast Report Generator")
-        self.geometry("960x590")
+        self.geometry("780x590")
         self.resizable(True, True)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -419,11 +419,11 @@ class App(ctk.CTk):
         hdr = ctk.CTkFrame(self._supplier_frame_outer, fg_color="transparent")
         hdr.pack(fill="x", pady=(0, 2))
         hdr.columnconfigure(0, minsize=170)
-        hdr.columnconfigure(1, minsize=185)
+        hdr.columnconfigure(1, minsize=155)
         hdr.columnconfigure(2, weight=1)
-        ctk.CTkLabel(hdr, text="Supplier", anchor="w",
+        ctk.CTkLabel(hdr, text="Supplier", anchor="w", width=160,
                      font=("Arial", 11, "bold")).grid(row=0, column=0, padx=(8, 4), sticky="w")
-        ctk.CTkLabel(hdr, text="Source Type", anchor="w",
+        ctk.CTkLabel(hdr, text="Source Type", anchor="w", width=148,
                      font=("Arial", 11, "bold")).grid(row=0, column=1, padx=(4, 8), sticky="w")
         ctk.CTkLabel(hdr, text="Selected File", anchor="w",
                      font=("Arial", 11, "bold")).grid(row=0, column=2, padx=(0, 8), sticky="w")
