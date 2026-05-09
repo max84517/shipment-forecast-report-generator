@@ -20,6 +20,7 @@ A desktop tool (CustomTkinter dark-mode UI) for consolidating supplier monthly f
   6. Saves to `data/history/Rolling Forecast FYXX MM.xlsx`.
 - **History merge**: Select any combination of saved Rolling Forecast files to merge into `data/output/forecast data.xlsx`.
 - **Standalone Merge button**: Access the merge dialog at any time without re-running consolidation.
+- **Generate Report**: Produces a pivot-table Excel with two sheets — **Keyboard** and **Peripheral** — each containing a Rebate Amount pivot and a Q'ty pivot stacked on the same sheet (3 blank rows apart). Columns are months in fiscal order (e.g. `May'26`, `Jun'26`) with Quarter subtotal columns (Excel SUM formulas) inserted after each quarter. Supplier order is alphabetical by default and can be reordered by drag-and-drop before confirming.
 
 ---
 
@@ -112,6 +113,7 @@ Nov and Dec of `FY26` belong to calendar year **2025**; all other months belong 
 |------|----------|-------------|
 | `Rolling Forecast FY26 05.xlsx` | `data/history/` | Consolidated data for one FY + start month |
 | `forecast data.xlsx` | `data/output/` | Merged data from selected history files |
+| `forecast pivot FY26 05.xlsx` | `data/report/` | Pivot report with Keyboard & Peripheral sheets (Rebate Amount + Q'ty) |
 
 ---
 
