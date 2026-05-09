@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Iterable
 
 import openpyxl
+from openpyxl.styles import PatternFill, Border, Side, Font
 import pandas as pd
 
 from shipment_forecast.paths import SOURCE_DATA_DIR, HISTORY_DIR, OUTPUT_DIR, REPORT_DIR
@@ -451,8 +452,19 @@ def generate_report(history_path: Path, supplier_order: list[str], report_dir: P
 
     wb = openpyxl.Workbook()
 
+    _QUARTER_FILL = PatternFill(fill_type="solid", fgColor="C1F0C8")
+    _QUARTER_BORDER = Border(
+        left=Side(style="thick", color="000000"),
+        right=Side(style="thick", color="000000"),
+    )
+    _DEFAULT_FONT = Font(name="Calibri", size=11)
+    _QUARTER_FONT = Font(name="Calibri", size=11, bold=True)
+    _CURRENCY_FMT = '$#,##0.00'
+
     def _write_pivot(ws, df_seg: pd.DataFrame, metric: str, start_row: int) -> int:
         """Write one pivot table starting at start_row. Returns the next free row."""
+        is_currency = metric == "Rebate Amount"
+
         # Build ordered supplier list for this segment (skip suppliers not present)
         sups_in_seg = df_seg["GTK Suppliers"].dropna().unique().tolist()
         seg_lower: dict[str, str] = {s.lower(): s for s in sups_in_seg}
@@ -480,33 +492,43 @@ def generate_report(history_path: Path, supplier_order: list[str], report_dir: P
         )
 
         # Header row
-        ws.cell(row=start_row, column=1, value=metric)
+        hdr_title = ws.cell(row=start_row, column=1, value=metric)
+        hdr_title.font = _DEFAULT_FONT
         col_num = 2
         month_to_col: dict[str, int] = {}
         quarter_plan: list[tuple[str, list[int], int]] = []
 
         for entry in col_plan:
             if entry["type"] == "month":
-                ws.cell(row=start_row, column=col_num, value=entry["label"])
+                mc = ws.cell(row=start_row, column=col_num, value=entry["label"])
+                mc.font = _DEFAULT_FONT
                 month_to_col[entry["abbr"]] = col_num
                 col_num += 1
             else:
                 q_month_cols = [month_to_col[mo] for mo in entry["months"]]
                 quarter_plan.append((entry["label"], q_month_cols, col_num))
-                ws.cell(row=start_row, column=col_num, value=entry["label"])
+                hdr_cell = ws.cell(row=start_row, column=col_num, value=entry["label"])
+                hdr_cell.fill = _QUARTER_FILL
+                hdr_cell.border = _QUARTER_BORDER
+                hdr_cell.font = _QUARTER_FONT
                 col_num += 1
+
+        q_cols = {q_col for _, _, q_col in quarter_plan}
 
         # Data rows
         for i, supplier in enumerate(ordered):
             row_num = start_row + 1 + i
-            ws.cell(row=row_num, column=1, value=supplier)
+            ws.cell(row=row_num, column=1, value=supplier).font = _DEFAULT_FONT
 
             for mo, c in month_to_col.items():
                 try:
                     val = float(pivot.loc[supplier, mo])
                 except (KeyError, TypeError):
                     val = 0.0
-                ws.cell(row=row_num, column=c, value=val)
+                cell = ws.cell(row=row_num, column=c, value=val)
+                cell.font = _DEFAULT_FONT
+                if is_currency:
+                    cell.number_format = _CURRENCY_FMT
 
             for q_label, q_month_cols, q_col in quarter_plan:
                 if len(q_month_cols) == 1:
@@ -516,7 +538,12 @@ def generate_report(history_path: Path, supplier_order: list[str], report_dir: P
                     first = ws.cell(row=row_num, column=q_month_cols[0]).coordinate
                     last = ws.cell(row=row_num, column=q_month_cols[-1]).coordinate
                     formula = f"=SUM({first}:{last})"
-                ws.cell(row=row_num, column=q_col, value=formula)
+                q_cell = ws.cell(row=row_num, column=q_col, value=formula)
+                q_cell.fill = _QUARTER_FILL
+                q_cell.border = _QUARTER_BORDER
+                q_cell.font = _QUARTER_FONT
+                if is_currency:
+                    q_cell.number_format = _CURRENCY_FMT
 
         return start_row + 1 + len(ordered)  # next free row
 
