@@ -298,11 +298,17 @@ def list_history_files() -> list[Path]:
     )
 
 
-def merge_and_save(selected_paths: list[Path]) -> Path:
+def merge_and_save(
+    selected_paths: list[Path],
+    progress_cb: "Callable[[int], None] | None" = None,
+) -> Path:
     """Merge selected history files and write to output/forecast data.xlsx."""
+    from typing import Callable  # noqa: F401 – used in type hint string above
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     dfs: list[pd.DataFrame] = []
-    for p in selected_paths:
+    for i, p in enumerate(selected_paths):
+        if progress_cb:
+            progress_cb(i)
         xl = pd.ExcelFile(p, engine="openpyxl")
         for sheet in xl.sheet_names:
             df = xl.parse(sheet)
