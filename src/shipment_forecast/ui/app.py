@@ -718,11 +718,17 @@ class App(ctk.CTk):
             messagebox.showwarning("Warning", "No history files found. Please consolidate first.")
             return
 
-        # Default supplier order: predefined list, then any extra detected suppliers
-        default_order = list(consolidate_mod.DEFAULT_SUPPLIER_ORDER)
-        for row in self._supplier_rows:
-            if row.supplier not in default_order:
-                default_order.append(row.supplier)
+        # Build supplier list sorted alphabetically from the selected history file.
+        default_order: list[str] = []
+        try:
+            import pandas as pd
+            df_check = pd.read_excel(history_files[-1], sheet_name=0, usecols=["GTK Suppliers"])
+            default_order = sorted(
+                df_check["GTK Suppliers"].dropna().unique().tolist(),
+                key=lambda s: s.lower(),
+            )
+        except Exception:
+            pass
 
         ReportDialog(self, history_files, default_order, self._run_report)
 

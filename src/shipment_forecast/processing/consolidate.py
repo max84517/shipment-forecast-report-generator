@@ -39,7 +39,7 @@ QUARTER_MONTHS = [
     ("Q4", ["Aug", "Sep", "Oct"]),
 ]
 
-DEFAULT_SUPPLIER_ORDER = ["Acrox", "Darfon", "Liteon", "Primax", "Sunrex"]
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -399,7 +399,8 @@ def merge_and_save(
 
 def generate_report(history_path: Path, supplier_order: list[str]) -> Path:
     """
-    Generate two pivot-table sheets (Rebate Amount, Qty) from a history file.
+    Generate Keyboard and Peripheral sheets, each containing two pivot tables
+    (Rebate Amount on top, Q'ty below with 3 blank rows gap).
     Rows = Suppliers, Columns = Months + Quarter subtotals (Excel SUM formulas).
     Saved to data/report/forecast pivot FYXX MM.xlsx.
     """
@@ -408,7 +409,6 @@ def generate_report(history_path: Path, supplier_order: list[str]) -> Path:
     df = pd.read_excel(history_path, sheet_name=0)
 
     # Extract FY year and calendar month number from filename
-    # e.g. "Rolling Forecast FY26 05.xlsx" → fy_year="26", file_month_num=5
     m = re.search(r"FY(\d{2})\s+(\d{2})", history_path.stem, re.IGNORECASE)
     fy_year = m.group(1) if m else "??"
     file_month_num = int(m.group(2)) if m else 1
@@ -420,24 +420,18 @@ def generate_report(history_path: Path, supplier_order: list[str]) -> Path:
     months_in_data = set(df["Month"].dropna().unique())
     report_months_set = set(all_report_months)
 
-    # Build ordered supplier list (case-insensitive match between user order and data names)
-    suppliers_in_data = df["GTK Suppliers"].dropna().unique().tolist()
-    data_sup_lower: dict[str, str] = {s.lower(): s for s in suppliers_in_data}
+    # Split data into Peripheral vs Keyboard (case-insensitive on Segment column)
+    if "Segment" in df.columns:
+        is_peripheral = df["Segment"].fillna("").str.lower().str.strip() == "peripheral"
+    else:
+        is_peripheral = pd.Series([False] * len(df), index=df.index)
 
-    ordered_suppliers: list[str] = []
-    seen: set[str] = set()
-    for s in supplier_order:
-        actual = data_sup_lower.get(s.lower())
-        if actual and actual not in seen:
-            ordered_suppliers.append(actual)
-            seen.add(actual)
-    for s in suppliers_in_data:
-        if s not in seen:
-            ordered_suppliers.append(s)
-            seen.add(s)
+    sheets_data = [
+        ("Keyboard",   df[~is_peripheral]),
+        ("Peripheral", df[is_peripheral]),
+    ]
 
     # Column plan: interleave month columns with quarter subtotal columns
-    # Only include quarters that have at least one month present in data
     col_plan: list[dict] = []
     for q_label, q_months in QUARTER_MONTHS:
         q_present = [mo for mo in q_months if mo in months_in_data and mo in report_months_set]
@@ -454,45 +448,56 @@ def generate_report(history_path: Path, supplier_order: list[str]) -> Path:
 
     wb = openpyxl.Workbook()
 
-    for sheet_idx, (metric, sheet_name) in enumerate([
-        ("Rebate Amount", "Rebate Amount"),
-        ("Q'ty", "Qty"),
-    ]):
-        ws = wb.active if sheet_idx == 0 else wb.create_sheet(sheet_name)
-        if sheet_idx == 0:
-            ws.title = sheet_name
+    def _write_pivot(ws, df_seg: pd.DataFrame, metric: str, start_row: int) -> int:
+        """Write one pivot table starting at start_row. Returns the next free row."""
+        # Build ordered supplier list for this segment (skip suppliers not present)
+        sups_in_seg = df_seg["GTK Suppliers"].dropna().unique().tolist()
+        seg_lower: dict[str, str] = {s.lower(): s for s in sups_in_seg}
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for s in supplier_order:
+            actual = seg_lower.get(s.lower())
+            if actual and actual not in seen:
+                ordered.append(actual)
+                seen.add(actual)
+        for s in sups_in_seg:
+            if s not in seen:
+                ordered.append(s)
+                seen.add(s)
 
-        # Pivot: supplier × month → sum of metric
+        if not ordered:
+            return start_row
+
         pivot = (
-            df.groupby(["GTK Suppliers", "Month"])[metric]
+            df_seg.groupby(["GTK Suppliers", "Month"])[metric]
             .sum()
             .unstack("Month")
-            .reindex(index=ordered_suppliers)
+            .reindex(index=ordered)
             .fillna(0)
         )
 
-        # ── header row ────────────────────────────────────────────────────────
-        ws.cell(row=1, column=1, value="Supplier")
+        # Header row
+        ws.cell(row=start_row, column=1, value=metric)
         col_num = 2
         month_to_col: dict[str, int] = {}
-        quarter_plan: list[tuple[str, list[int], int]] = []  # (label, [month_cols], q_col)
+        quarter_plan: list[tuple[str, list[int], int]] = []
 
         for entry in col_plan:
             if entry["type"] == "month":
-                ws.cell(row=1, column=col_num, value=entry["label"])
+                ws.cell(row=start_row, column=col_num, value=entry["label"])
                 month_to_col[entry["abbr"]] = col_num
                 col_num += 1
             else:
                 q_month_cols = [month_to_col[mo] for mo in entry["months"]]
                 quarter_plan.append((entry["label"], q_month_cols, col_num))
-                ws.cell(row=1, column=col_num, value=entry["label"])
+                ws.cell(row=start_row, column=col_num, value=entry["label"])
                 col_num += 1
 
-        # ── data rows ─────────────────────────────────────────────────────────
-        for row_num, supplier in enumerate(ordered_suppliers, start=2):
+        # Data rows
+        for i, supplier in enumerate(ordered):
+            row_num = start_row + 1 + i
             ws.cell(row=row_num, column=1, value=supplier)
 
-            # Month values
             for mo, c in month_to_col.items():
                 try:
                     val = float(pivot.loc[supplier, mo])
@@ -500,16 +505,27 @@ def generate_report(history_path: Path, supplier_order: list[str]) -> Path:
                     val = 0.0
                 ws.cell(row=row_num, column=c, value=val)
 
-            # Quarter SUM formulas
             for q_label, q_month_cols, q_col in quarter_plan:
                 if len(q_month_cols) == 1:
-                    src_coord = ws.cell(row=row_num, column=q_month_cols[0]).coordinate
-                    formula = f"={src_coord}"
+                    coord = ws.cell(row=row_num, column=q_month_cols[0]).coordinate
+                    formula = f"={coord}"
                 else:
                     first = ws.cell(row=row_num, column=q_month_cols[0]).coordinate
                     last = ws.cell(row=row_num, column=q_month_cols[-1]).coordinate
                     formula = f"=SUM({first}:{last})"
                 ws.cell(row=row_num, column=q_col, value=formula)
+
+        return start_row + 1 + len(ordered)  # next free row
+
+    for sheet_idx, (sheet_name, df_seg) in enumerate(sheets_data):
+        ws = wb.active if sheet_idx == 0 else wb.create_sheet(sheet_name)
+        if sheet_idx == 0:
+            ws.title = sheet_name
+
+        next_row = _write_pivot(ws, df_seg, "Rebate Amount", start_row=1)
+        # 3 blank rows gap
+        next_row += 3
+        _write_pivot(ws, df_seg, "Q'ty", start_row=next_row)
 
     wb.save(out_path)
     return out_path
