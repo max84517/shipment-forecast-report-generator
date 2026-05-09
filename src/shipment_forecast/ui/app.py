@@ -355,7 +355,7 @@ class App(ctk.CTk):
         self._prog_bar = ctk.CTkProgressBar(prog_frame)
         self._prog_bar.pack(fill="x", side="left", expand=True, padx=(0, 8))
         self._prog_bar.set(0)
-        self._prog_label = ctk.CTkLabel(prog_frame, text="Idle", width=200, anchor="w",
+        self._prog_label = ctk.CTkLabel(prog_frame, text="", width=200, anchor="w",
                                         font=("Arial", 11))
         self._prog_label.pack(side="left")
 

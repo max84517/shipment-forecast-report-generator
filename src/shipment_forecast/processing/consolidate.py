@@ -201,12 +201,32 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
     feat_df = feat_df.dropna(how="all")
 
     # Secondary guard: after ffill, Category/Segment/Series may have been filled into
-    # phantom rows that have NO data in any other column. Drop rows where every column
-    # EXCEPT the fill-down ones is null/empty.
+    # phantom rows that have NO data in any other column. Drop rows where fewer than
+    # 2 non-fill-down columns have values (a single stray cell like a Refresh button
+    # would only have 1 non-null value and must be removed).
     fill_down_cols = {"Category", "Segment", "Series"}
     non_fill_cols = [c for c in feat_df.columns if c not in fill_down_cols]
     if non_fill_cols:
-        mask = feat_df[non_fill_cols].replace("", pd.NA).notna().any(axis=1)
+        # Count how many non-fill-down cols have a real (non-null, non-empty) value
+        real_val = feat_df[non_fill_cols].replace("", pd.NA).notna()
+        sufficient = real_val.sum(axis=1) >= 2
+        feat_df = feat_df[sufficient].reset_index(drop=True)
+
+    # Drop rows where GTK Suppliers looks like a UI artifact (single short token,
+    # e.g. "Refresh", "Total", "Note") rather than an actual supplier name.
+    if "GTK Suppliers" in feat_df.columns:
+        def _looks_like_data(val) -> bool:
+            if pd.isna(val) or str(val).strip() == "":
+                return False  # empty is fine — will be caught by above guard
+            s = str(val).strip()
+            # Reject single words that are purely alphabetic and shorter than 4 chars,
+            # or known UI-artifact keywords.
+            _ARTIFACTS = {"refresh", "total", "note", "notes", "subtotal",
+                          "click", "update", "button", "reset"}
+            if s.lower() in _ARTIFACTS:
+                return False
+            return True
+        mask = feat_df["GTK Suppliers"].apply(_looks_like_data)
         feat_df = feat_df[mask].reset_index(drop=True)
 
     if feat_df.empty:
