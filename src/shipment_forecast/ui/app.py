@@ -245,8 +245,9 @@ class MergeDialog(ctk.CTkToplevel):
                 )
                 self.after(0, lambda: self._finish(out))
             except Exception as exc:
-                self.after(0, lambda: (
-                    messagebox.showerror("Error", str(exc), parent=self),
+                msg = str(exc)
+                self.after(0, lambda m=msg: (
+                    messagebox.showerror("Error", m, parent=self),
                     self.destroy(),
                 ))
 
@@ -406,9 +407,10 @@ class App(ctk.CTk):
             try:
                 common = consolidate_mod.common_fy_sheets(selected_files)
             except Exception as exc:
-                self.after(0, lambda: (
+                msg = str(exc)
+                self.after(0, lambda m=msg: (
                     self._set_progress(0, "Error"),
-                    messagebox.showerror("Error", str(exc)),
+                    messagebox.showerror("Error", m),
                 ))
                 return
 
@@ -465,7 +467,6 @@ class App(ctk.CTk):
         def _work():
             try:
                 import pandas as pd
-                import traceback
 
                 # Step 1: copy
                 self.after(0, lambda: self._set_progress(0.05, "Copying source files..."))
@@ -484,7 +485,8 @@ class App(ctk.CTk):
                             df["Source File"] = f.name
                             dfs.append(df)
                     except Exception as exc:
-                        self.after(0, lambda e=str(exc), n=f.name:
+                        _e, _n = str(exc), f.name
+                        self.after(0, lambda e=_e, n=_n:
                                    self._log_msg(f"[WARN] {n}: {e}"))
 
                 self.after(0, lambda: self._set_progress(0.82, "Merging data..."))
@@ -510,11 +512,11 @@ class App(ctk.CTk):
 
             except Exception as exc:
                 import traceback
-                tb = traceback.format_exc()
-                self.after(0, lambda: (
+                _msg, _tb = str(exc), traceback.format_exc()
+                self.after(0, lambda m=_msg, t=_tb: (
                     self._set_progress(0, "Error"),
-                    self._log_msg(f"[ERROR] {exc}"),
-                    messagebox.showerror("Error", f"{exc}\n\n{tb}"),
+                    self._log_msg(f"[ERROR] {m}"),
+                    messagebox.showerror("Error", f"{m}\n\n{t}"),
                 ))
 
         threading.Thread(target=_work, daemon=True).start()
