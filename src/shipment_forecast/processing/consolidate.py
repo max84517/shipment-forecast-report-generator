@@ -128,7 +128,17 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
             last = val
         headers.append(val)
 
-    data_rows = rows[2:]
+    data_rows = list(rows[2:])
+
+    # Trim trailing rows that are entirely None — openpyxl often returns thousands
+    # of phantom rows from Excel's stored used-range; they explode after ffill × months.
+    while data_rows and all(v is None for v in data_rows[-1]):
+        data_rows.pop()
+
+    if not data_rows:
+        wb.close()
+        return pd.DataFrame()
+
     df_raw = pd.DataFrame(data_rows, columns=headers)
 
     # ── identify feature and value columns ───────────────────────────────────
@@ -187,8 +197,31 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
         if col in feat_df.columns:
             feat_df[col] = feat_df[col].replace("", pd.NA).ffill()
 
-    # Drop rows where all feature cols are null/empty (trailing empty rows)
+    # Drop rows where all feature cols are null/empty (catches pre-ffill phantom rows)
     feat_df = feat_df.dropna(how="all")
+
+    # Secondary guard: after ffill, Category/Segment/Series may have been filled into
+    # phantom rows that have NO data in any other column. Drop rows where every column
+    # EXCEPT the fill-down ones is null/empty.
+    fill_down_cols = {"Category", "Segment", "Series"}
+    non_fill_cols = [c for c in feat_df.columns if c not in fill_down_cols]
+    if non_fill_cols:
+        mask = feat_df[non_fill_cols].replace("", pd.NA).notna().any(axis=1)
+        feat_df = feat_df[mask].reset_index(drop=True)
+
+    if feat_df.empty:
+        wb.close()
+        return pd.DataFrame()
+
+    # ── build value columns aligned to feat_df ───────────────────────────────
+    # feat_df has been filtered; we need to re-extract value cols using the
+    # same boolean mask so rows match correctly.
+    # Re-build a filtered value df from df_raw using the non-fill mask index.
+    value_df = df_raw.copy()
+    # Keep only rows that survived the feature filter (by positional index)
+    value_df = value_df.iloc[feat_df.index] if not feat_df.empty else value_df.iloc[:0]
+    value_df = value_df.reset_index(drop=True)
+    feat_df = feat_df.reset_index(drop=True)
 
     # ── pivot value cols: one row per (feature combo, month) ─────────────────
     # Group value columns by month, collect {month: {vtype: col}}
@@ -203,10 +236,8 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
         for vt in VALUE_KEYWORDS:
             actual_col = vtype_cols.get(vt)
             if actual_col:
-                raw_vals = df_raw[actual_col].iloc[: len(feat_df)].values
-                m_df[vt] = pd.to_numeric(
-                    pd.Series(raw_vals, index=feat_df.index), errors="coerce"
-                ).fillna(0)
+                col_data = value_df[actual_col] if actual_col in value_df.columns else pd.Series(dtype=float)
+                m_df[vt] = pd.to_numeric(col_data, errors="coerce").fillna(0).values
             else:
                 m_df[vt] = 0
         month_dfs.append(m_df)
