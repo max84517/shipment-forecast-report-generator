@@ -275,6 +275,93 @@ class MergeDialog(ctk.CTkToplevel):
         self._on_confirm(out)
 
 
+# ── Report Dialog ─────────────────────────────────────────────────────────────
+
+
+class ReportDialog(ctk.CTkToplevel):
+    """Let user pick a history file and reorder suppliers, then generate pivot report."""
+
+    def __init__(
+        self,
+        master,
+        history_files: list[Path],
+        supplier_order: list[str],
+        on_confirm: Callable[[Path, list[str]], None],
+    ):
+        super().__init__(master)
+        self.title("Generate Report")
+        self.resizable(False, False)
+        self._history_files = history_files
+        self._on_confirm = on_confirm
+
+        # ── file selection ────────────────────────────────────────────────────
+        ctk.CTkLabel(self, text="History File:", anchor="w",
+                     font=("Arial", 12, "bold")).pack(padx=18, pady=(16, 4), fill="x")
+        self._file_var = ctk.StringVar(
+            value=history_files[-1].name if history_files else ""
+        )
+        ctk.CTkOptionMenu(
+            self, values=[f.name for f in reversed(history_files)],
+            variable=self._file_var, width=360,
+        ).pack(padx=18, pady=(0, 12))
+
+        # ── supplier order ────────────────────────────────────────────────────
+        ctk.CTkLabel(self, text="Supplier Order  (drag to reorder):", anchor="w",
+                     font=("Arial", 12, "bold")).pack(padx=18, pady=(0, 4), fill="x")
+
+        lb_frame = tk.Frame(self, bg="#2b2b2b", relief="flat", bd=0)
+        lb_frame.pack(padx=18, pady=(0, 12), fill="x")
+
+        self._listbox = tk.Listbox(
+            lb_frame,
+            selectmode=tk.SINGLE,
+            bg="#2b2b2b", fg="white",
+            selectbackground="#1f6aa5", selectforeground="white",
+            relief="flat", borderwidth=0, highlightthickness=1,
+            highlightcolor="#555555", highlightbackground="#444444",
+            font=("Arial", 12), height=len(supplier_order),
+            activestyle="none",
+        )
+        self._listbox.pack(padx=4, pady=4, fill="x")
+        for s in supplier_order:
+            self._listbox.insert(tk.END, s)
+
+        self._drag_src: int | None = None
+        self._listbox.bind("<ButtonPress-1>", self._drag_start)
+        self._listbox.bind("<B1-Motion>", self._drag_motion)
+
+        # ── confirm button ────────────────────────────────────────────────────
+        ctk.CTkButton(self, text="Generate", width=160, height=34,
+                      command=self._confirm).pack(pady=(0, 16))
+
+        _popup_on_top(self)
+
+    def _drag_start(self, event: tk.Event):
+        self._drag_src = self._listbox.nearest(event.y)
+
+    def _drag_motion(self, event: tk.Event):
+        dst = self._listbox.nearest(event.y)
+        if self._drag_src is None or dst == self._drag_src:
+            return
+        item = self._listbox.get(self._drag_src)
+        self._listbox.delete(self._drag_src)
+        self._listbox.insert(dst, item)
+        self._listbox.selection_clear(0, tk.END)
+        self._listbox.selection_set(dst)
+        self._drag_src = dst
+
+    def _confirm(self):
+        file_name = self._file_var.get()
+        history_path = next(
+            (f for f in self._history_files if f.name == file_name), None
+        )
+        if not history_path:
+            return
+        supplier_order = list(self._listbox.get(0, tk.END))
+        self.destroy()
+        self._on_confirm(history_path, supplier_order)
+
+
 # ── Main UI ───────────────────────────────────────────────────────────────────
 
 # ── config helpers ───────────────────────────────────────────────────────────
@@ -373,6 +460,9 @@ class App(ctk.CTk):
         ctk.CTkButton(btn_row, text="Merge Data", width=140, height=34,
                       font=("Arial", 12), fg_color="#2a6496",
                       command=self._start_merge).pack(side="left", padx=12)
+        ctk.CTkButton(btn_row, text="Generate Report", width=160, height=34,
+                      font=("Arial", 12), fg_color="#2e7d32",
+                      command=self._start_report).pack(side="left", padx=12)
 
     # ── config load / save ────────────────────────────────────────────────────
 
@@ -619,6 +709,45 @@ class App(ctk.CTk):
             messagebox.showinfo("Done", f"Merged file saved:\n{out}")
 
         MergeDialog(self, history_files, _on_done)
+
+    # ── report generation ──────────────────────────────────────────────────────
+
+    def _start_report(self):
+        history_files = consolidate_mod.list_history_files()
+        if not history_files:
+            messagebox.showwarning("Warning", "No history files found. Please consolidate first.")
+            return
+
+        # Default supplier order: predefined list, then any extra detected suppliers
+        default_order = list(consolidate_mod.DEFAULT_SUPPLIER_ORDER)
+        for row in self._supplier_rows:
+            if row.supplier not in default_order:
+                default_order.append(row.supplier)
+
+        ReportDialog(self, history_files, default_order, self._run_report)
+
+    def _run_report(self, history_path: Path, supplier_order: list[str]):
+        self._set_progress(-1, "Generating report...")
+        self._log_msg(f"Generating report from {history_path.name}...")
+
+        def _work():
+            try:
+                out = consolidate_mod.generate_report(history_path, supplier_order)
+                self.after(0, lambda p=str(out): (
+                    self._set_progress(1.0, "Done!"),
+                    self._log_msg(f"Report saved: {p}"),
+                    messagebox.showinfo("Done", f"Report saved:\n{p}"),
+                ))
+            except Exception as exc:
+                import traceback
+                _msg, _tb = str(exc), traceback.format_exc()
+                self.after(0, lambda m=_msg, t=_tb: (
+                    self._set_progress(0, "Error"),
+                    self._log_msg(f"[ERROR] {m}"),
+                    messagebox.showerror("Error", f"{m}\n\n{t}"),
+                ))
+
+        threading.Thread(target=_work, daemon=True).start()
 
     # ── close ─────────────────────────────────────────────────────────────────
 

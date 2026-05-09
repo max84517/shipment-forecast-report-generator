@@ -12,7 +12,7 @@ from typing import Iterable
 import openpyxl
 import pandas as pd
 
-from shipment_forecast.paths import SOURCE_DATA_DIR, HISTORY_DIR, OUTPUT_DIR
+from shipment_forecast.paths import SOURCE_DATA_DIR, HISTORY_DIR, OUTPUT_DIR, REPORT_DIR
 
 # ── constants ────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,15 @@ FEATURE_COLS = [
 VALUE_KEYWORDS = ["Table Price", "Unit Rebate", "Q'ty", "Rebate Amount"]
 
 FY_SHEET_RE = re.compile(r"^FY\d{2}$", re.IGNORECASE)
+
+QUARTER_MONTHS = [
+    ("Q1", ["Nov", "Dec", "Jan"]),
+    ("Q2", ["Feb", "Mar", "Apr"]),
+    ("Q3", ["May", "Jun", "Jul"]),
+    ("Q4", ["Aug", "Sep", "Oct"]),
+]
+
+DEFAULT_SUPPLIER_ORDER = ["Acrox", "Darfon", "Liteon", "Primax", "Sunrex"]
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -383,3 +392,124 @@ def merge_and_save(
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         merged.to_excel(writer, sheet_name="Forecast Data", index=False)
     return out
+
+
+# ── report generation ─────────────────────────────────────────────────────────
+
+
+def generate_report(history_path: Path, supplier_order: list[str]) -> Path:
+    """
+    Generate two pivot-table sheets (Rebate Amount, Qty) from a history file.
+    Rows = Suppliers, Columns = Months + Quarter subtotals (Excel SUM formulas).
+    Saved to data/report/forecast pivot FYXX MM.xlsx.
+    """
+    import calendar as _cal
+
+    df = pd.read_excel(history_path, sheet_name=0)
+
+    # Extract FY year and calendar month number from filename
+    # e.g. "Rolling Forecast FY26 05.xlsx" → fy_year="26", file_month_num=5
+    m = re.search(r"FY(\d{2})\s+(\d{2})", history_path.stem, re.IGNORECASE)
+    fy_year = m.group(1) if m else "??"
+    file_month_num = int(m.group(2)) if m else 1
+    start_month = _cal.month_abbr[file_month_num]  # e.g. "May"
+
+    # Months from start_month to fiscal year end (Oct), in fiscal order
+    start_idx = MONTH_TO_INT.get(start_month, 0)
+    all_report_months = [MONTH_ORDER[(start_idx + i) % 12] for i in range(12 - start_idx)]
+    months_in_data = set(df["Month"].dropna().unique())
+    report_months_set = set(all_report_months)
+
+    # Build ordered supplier list (case-insensitive match between user order and data names)
+    suppliers_in_data = df["GTK Suppliers"].dropna().unique().tolist()
+    data_sup_lower: dict[str, str] = {s.lower(): s for s in suppliers_in_data}
+
+    ordered_suppliers: list[str] = []
+    seen: set[str] = set()
+    for s in supplier_order:
+        actual = data_sup_lower.get(s.lower())
+        if actual and actual not in seen:
+            ordered_suppliers.append(actual)
+            seen.add(actual)
+    for s in suppliers_in_data:
+        if s not in seen:
+            ordered_suppliers.append(s)
+            seen.add(s)
+
+    # Column plan: interleave month columns with quarter subtotal columns
+    # Only include quarters that have at least one month present in data
+    col_plan: list[dict] = []
+    for q_label, q_months in QUARTER_MONTHS:
+        q_present = [mo for mo in q_months if mo in months_in_data and mo in report_months_set]
+        if not q_present:
+            continue
+        for mo in q_present:
+            col_plan.append({"type": "month", "abbr": mo, "label": f"{mo}'{fy_year}"})
+        col_plan.append({"type": "quarter", "label": q_label, "months": q_present})
+
+    # Output path: "Rolling Forecast FY26 05" → "forecast pivot FY26 05"
+    out_name = history_path.stem.replace("Rolling Forecast", "forecast pivot")
+    out_path = REPORT_DIR / f"{out_name}.xlsx"
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+    wb = openpyxl.Workbook()
+
+    for sheet_idx, (metric, sheet_name) in enumerate([
+        ("Rebate Amount", "Rebate Amount"),
+        ("Q'ty", "Qty"),
+    ]):
+        ws = wb.active if sheet_idx == 0 else wb.create_sheet(sheet_name)
+        if sheet_idx == 0:
+            ws.title = sheet_name
+
+        # Pivot: supplier × month → sum of metric
+        pivot = (
+            df.groupby(["GTK Suppliers", "Month"])[metric]
+            .sum()
+            .unstack("Month")
+            .reindex(index=ordered_suppliers)
+            .fillna(0)
+        )
+
+        # ── header row ────────────────────────────────────────────────────────
+        ws.cell(row=1, column=1, value="Supplier")
+        col_num = 2
+        month_to_col: dict[str, int] = {}
+        quarter_plan: list[tuple[str, list[int], int]] = []  # (label, [month_cols], q_col)
+
+        for entry in col_plan:
+            if entry["type"] == "month":
+                ws.cell(row=1, column=col_num, value=entry["label"])
+                month_to_col[entry["abbr"]] = col_num
+                col_num += 1
+            else:
+                q_month_cols = [month_to_col[mo] for mo in entry["months"]]
+                quarter_plan.append((entry["label"], q_month_cols, col_num))
+                ws.cell(row=1, column=col_num, value=entry["label"])
+                col_num += 1
+
+        # ── data rows ─────────────────────────────────────────────────────────
+        for row_num, supplier in enumerate(ordered_suppliers, start=2):
+            ws.cell(row=row_num, column=1, value=supplier)
+
+            # Month values
+            for mo, c in month_to_col.items():
+                try:
+                    val = float(pivot.loc[supplier, mo])
+                except (KeyError, TypeError):
+                    val = 0.0
+                ws.cell(row=row_num, column=c, value=val)
+
+            # Quarter SUM formulas
+            for q_label, q_month_cols, q_col in quarter_plan:
+                if len(q_month_cols) == 1:
+                    src_coord = ws.cell(row=row_num, column=q_month_cols[0]).coordinate
+                    formula = f"={src_coord}"
+                else:
+                    first = ws.cell(row=row_num, column=q_month_cols[0]).coordinate
+                    last = ws.cell(row=row_num, column=q_month_cols[-1]).coordinate
+                    formula = f"=SUM({first}:{last})"
+                ws.cell(row=row_num, column=q_col, value=formula)
+
+    wb.save(out_path)
+    return out_path
