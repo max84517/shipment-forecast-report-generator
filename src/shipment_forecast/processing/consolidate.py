@@ -278,7 +278,13 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
 
     # ── add FY / Quarter / Year cols ─────────────────────────────────────────
     fy = sheet_name.upper()  # e.g. FY26
+    fy_int = int(fy[2:])  # 26
     result["FY"] = result["Month"].apply(lambda m: f"{fy} {_fy_quarter(m)}")
+    # FY Sort Key: unique integer per FY-Quarter for PowerBI "Sort by column"
+    # e.g. FY26 Q1→261, FY26 Q2→262, FY26 Q3→263, FY26 Q4→264
+    result["FY Sort Key"] = result["Month"].apply(
+        lambda m: fy_int * 10 + int(_fy_quarter(m)[1])
+    )
     result["Year"] = result["Month"].apply(lambda m: _year_for_month(fy, m))
 
     wb.close()
