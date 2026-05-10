@@ -352,6 +352,17 @@ def save_to_history(df: pd.DataFrame, fy_sheet: str, start_month: str) -> Path:
     if start_month in cal_abbrs:
         month_num = str(cal_abbrs.index(start_month) + 1).zfill(2)
 
+    # Add Forecast Date label and a numeric sort key for PowerBI.
+    # Fiscal order: Nov(11)=1, Dec(12)=2, Jan(1)=3, ..., Oct(10)=12
+    forecast_date = f"{fy} {month_num}"
+    cal_month = int(month_num)
+    fiscal_pos = (cal_month - 11) % 12 + 1   # Nov→1, Dec→2, Jan→3 … Oct→12
+    sort_key = int(fy[2:]) * 100 + fiscal_pos  # e.g. FY26 May → 2607
+
+    df = df.copy()
+    df["Forecast Date"] = forecast_date
+    df["Forecast Date Sort Key"] = sort_key
+
     fname = f"Rolling Forecast {fy} {month_num}.xlsx"
     out_path = HISTORY_DIR / fname
     sheet_label = f"forecast based on {start_month}"
