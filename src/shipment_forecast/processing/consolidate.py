@@ -569,15 +569,32 @@ def generate_report(history_path: Path, supplier_order: list[str], report_dir: P
         for col_cells in ws.columns:
             max_len = 0
             col_letter = col_cells[0].column_letter
+            has_currency = False
+            has_number = False
             for cell in col_cells:
                 if cell.value is None:
                     continue
-                # For formula cells use a rough estimate based on label length
                 val = str(cell.value)
                 if val.startswith("="):
-                    val = "$999,999.00"  # worst-case currency width
+                    # Formula: width depends on whether it's currency or qty
+                    if cell.number_format and "$" in cell.number_format:
+                        has_currency = True
+                    else:
+                        has_number = True
+                    continue
+                if isinstance(cell.value, (int, float)):
+                    if cell.number_format and "$" in cell.number_format:
+                        has_currency = True
+                    else:
+                        has_number = True
+                    continue
                 max_len = max(max_len, len(val))
-            ws.column_dimensions[col_letter].width = min(max_len + 0.5, 40)
+            # Estimate numeric column width from realistic formatted values
+            if has_currency:
+                max_len = max(max_len, 13)   # "$1,234,567.89"
+            if has_number:
+                max_len = max(max_len, 10)   # "12,345,678"
+            ws.column_dimensions[col_letter].width = min(max_len + 1, 40)
 
     for sheet_idx, (sheet_name, df_seg) in enumerate(sheets_data):
         ws = wb.active if sheet_idx == 0 else wb.create_sheet(sheet_name)
