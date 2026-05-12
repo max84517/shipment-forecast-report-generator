@@ -577,8 +577,7 @@ def generate_report(history_path: Path, supplier_order: list[str], report_dir: P
                 if val.startswith("="):
                     val = "$999,999.00"  # worst-case currency width
                 max_len = max(max_len, len(val))
-            # Add a small padding; cap at 40 to avoid overly wide columns
-            ws.column_dimensions[col_letter].width = min(max_len + 2, 40)
+            ws.column_dimensions[col_letter].width = min(max_len + 0.5, 40)
 
     for sheet_idx, (sheet_name, df_seg) in enumerate(sheets_data):
         ws = wb.active if sheet_idx == 0 else wb.create_sheet(sheet_name)
