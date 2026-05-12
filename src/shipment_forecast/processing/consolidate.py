@@ -564,6 +564,22 @@ def generate_report(history_path: Path, supplier_order: list[str], report_dir: P
 
         return start_row + 1 + len(ordered)  # next free row
 
+    def _autofit(ws) -> None:
+        """Set each column width to fit its widest cell value."""
+        for col_cells in ws.columns:
+            max_len = 0
+            col_letter = col_cells[0].column_letter
+            for cell in col_cells:
+                if cell.value is None:
+                    continue
+                # For formula cells use a rough estimate based on label length
+                val = str(cell.value)
+                if val.startswith("="):
+                    val = "$999,999.00"  # worst-case currency width
+                max_len = max(max_len, len(val))
+            # Add a small padding; cap at 40 to avoid overly wide columns
+            ws.column_dimensions[col_letter].width = min(max_len + 2, 40)
+
     for sheet_idx, (sheet_name, df_seg) in enumerate(sheets_data):
         ws = wb.active if sheet_idx == 0 else wb.create_sheet(sheet_name)
         if sheet_idx == 0:
@@ -573,6 +589,7 @@ def generate_report(history_path: Path, supplier_order: list[str], report_dir: P
         # 3 blank rows gap
         next_row += 3
         _write_pivot(ws, df_seg, "Q'ty", start_row=next_row)
+        _autofit(ws)
 
     wb.save(out_path)
     return out_path
