@@ -591,6 +591,7 @@ class App(ctk.CTk):
         dialog = ctk.CTkToplevel(self)
         dialog.title("Select FY Sheet & Start Month")
         dialog.resizable(False, False)
+        dialog.geometry("320x170")
 
         ctk.CTkLabel(dialog, text="FY Sheet:", width=120, anchor="w").grid(row=0, column=0, padx=14, pady=10)
         fy_var = ctk.StringVar(value=common_sheets[0])
@@ -611,6 +612,7 @@ class App(ctk.CTk):
         ctk.CTkButton(dialog, text="Confirm", command=_confirm).grid(
             row=2, column=0, columnspan=2, pady=12)
 
+        dialog.update_idletasks()
         dialog.lift()
         dialog.focus_force()
         dialog.grab_set()
