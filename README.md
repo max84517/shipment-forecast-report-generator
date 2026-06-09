@@ -15,9 +15,10 @@ A desktop tool (CustomTkinter dark-mode UI) for consolidating supplier monthly f
   1. Copies source files to `data/source_data/` (cleared before each run).
   2. Reads the chosen FY sheet; fills down merged cells (Category / Segment / Series).
   3. Extracts feature columns + value columns (`Table Price`, `Unit Rebate`, `Q'ty`, `Rebate Amount`). Handles Excel files with duplicate header names caused by merged-cell forward-fill using positional indexing.
-  4. Melts into long format (one row per feature combo × month).
-  5. Adds `FY` (e.g. `FY26 Q2`), `Year`, `Month`, and `Forecast Date` (e.g. `FY26 05`) columns.
-  6. Saves to `data/history/Rolling Forecast FYXX MM.xlsx`.
+  4. **GTK Suppliers column is always filled with the supplier folder name** — prevents blank entries if the supplier forgets to fill it in their Excel file.
+  5. Melts into long format (one row per feature combo × month).
+  6. Adds `FY` (e.g. `FY26 Q2`), `FY Sort Key` (e.g. `262`), `Year`, `Month`, `Forecast Date` (e.g. `FY26 05`), and `Forecast Date Sort Key` (e.g. `2607`) columns for PowerBI sorting.
+  7. Saves to `data/history/Rolling Forecast FYXX MM.xlsx`.
 - **History merge**: Select any combination of saved Rolling Forecast files to merge into `data/output/forecast data.xlsx`.
 - **Standalone Merge button**: Access the merge dialog at any time without re-running consolidation.
 - **Generate Report**: Produces a pivot-table Excel with two sheets — **Keyboard** and **Peripheral** — each containing a Rebate Amount pivot and a Q'ty pivot stacked on the same sheet (3 blank rows apart). Columns are months in fiscal order (e.g. `May'26`, `Jun'26`) with Quarter subtotal columns (Excel SUM formulas) inserted after each quarter. Supplier order is alphabetical by default and can be reordered by drag-and-drop before confirming.
