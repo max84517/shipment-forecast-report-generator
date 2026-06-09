@@ -112,10 +112,12 @@ def _year_for_month(fy_str: str, month_abbr: str) -> int:
 # ── core reader ──────────────────────────────────────────────────────────────
 
 
-def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.DataFrame:
+def read_supplier_sheet(path: Path, sheet_name: str, start_month: str, supplier_name: str | None = None) -> pd.DataFrame:
     """
     Read one FY sheet from a supplier Excel file.
     Returns a melted DataFrame with feature + month columns.
+    If supplier_name is provided it overwrites the GTK Suppliers column so that
+    blank/missing values in the Excel are always filled with the folder name.
     """
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb[sheet_name]
@@ -286,6 +288,9 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
         lambda m: fy_int * 10 + int(_fy_quarter(m)[1])
     )
     result["Year"] = result["Month"].apply(lambda m: _year_for_month(fy, m))
+
+    if supplier_name:
+        result["GTK Suppliers"] = supplier_name
 
     wb.close()
     return result

@@ -636,8 +636,10 @@ class App(ctk.CTk):
                     pct = 0.05 + 0.75 * i / max(total, 1)
                     lbl = f"Reading {f.name} ({i+1}/{total})..."
                     self.after(0, lambda p=pct, l=lbl: self._set_progress(p, l))
+                    # Derive supplier name from original path: <root>/<Supplier>/<subfolder>/<file>
+                    supplier_name = source_files[i].parent.parent.name
                     try:
-                        df = consolidate_mod.read_supplier_sheet(f, fy_sheet, start_month)
+                        df = consolidate_mod.read_supplier_sheet(f, fy_sheet, start_month, supplier_name=supplier_name)
                         if not df.empty:
                             df["Source File"] = f.name
                             dfs.append(df)
