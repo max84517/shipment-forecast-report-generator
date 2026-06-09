@@ -230,7 +230,7 @@ def read_supplier_sheet(path: Path, sheet_name: str, start_month: str) -> pd.Dat
 
     # Require BOTH "Platforms" AND "SPM" to have a real value.
     # Rows missing either are considered header artifacts / summary rows and dropped.
-    anchor_must_all = [c for c in ("Platforms", "SPM") if c in feat_df.columns]
+    anchor_must_all = [c for c in ("Platforms",) if c in feat_df.columns]
     if anchor_must_all:
         has_all = feat_df[anchor_must_all].replace("", pd.NA).notna().all(axis=1)
         feat_df = feat_df[has_all]
