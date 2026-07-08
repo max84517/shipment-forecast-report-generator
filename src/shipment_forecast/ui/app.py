@@ -724,15 +724,26 @@ class App(ctk.CTk):
             messagebox.showwarning("Warning", "No history files found. Please consolidate first.")
             return
 
-        # Build supplier list sorted alphabetically from the selected history file.
+        _PREFERRED_ORDER = ["Acrox", "Chicony", "Darfon", "LITEON", "SUNREX", "Primax"]
+
+        # Build supplier list from the latest history file, ordering preferred suppliers
+        # first (case-insensitive match), then any extras alphabetically.
         default_order: list[str] = []
         try:
             import pandas as pd
             df_check = pd.read_excel(history_files[-1], sheet_name=0, usecols=["GTK Suppliers"])
-            default_order = sorted(
-                df_check["GTK Suppliers"].dropna().unique().tolist(),
-                key=lambda s: s.lower(),
-            )
+            all_sups = df_check["GTK Suppliers"].dropna().unique().tolist()
+            sup_lower = {s.lower(): s for s in all_sups}
+            seen: set[str] = set()
+            for pref in _PREFERRED_ORDER:
+                actual = sup_lower.get(pref.lower())
+                if actual and actual not in seen:
+                    default_order.append(actual)
+                    seen.add(actual)
+            for s in sorted(all_sups, key=lambda x: x.lower()):
+                if s not in seen:
+                    default_order.append(s)
+                    seen.add(s)
         except Exception:
             pass
 
