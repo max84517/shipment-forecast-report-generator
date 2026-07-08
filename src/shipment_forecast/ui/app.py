@@ -62,10 +62,11 @@ def _detect_suppliers(root: Path) -> list[str]:
 class SupplierRow(ctk.CTkFrame):
     """One row per supplier: checkbox + segmented source button + file dropdown."""
 
-    def __init__(self, master, supplier: str, supplier_root: Path, **kwargs):
+    def __init__(self, master, supplier: str, supplier_root: Path, on_change: Callable | None = None, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
         self.supplier = supplier
         self.supplier_root = supplier_root
+        self._on_change = on_change
         self.columnconfigure(0, minsize=170)
         self.columnconfigure(1, minsize=155)
         self.columnconfigure(2, weight=1)
@@ -131,11 +132,15 @@ class SupplierRow(ctk.CTkFrame):
     def _on_source_change(self, value: str):
         self._source_key = "monthly" if value == "Forecast" else "spending"
         self._refresh_file_list()
+        if self._on_change:
+            self._on_change()
 
     def _on_toggle(self):
         state = "normal" if self._enabled.get() else "disabled"
         self.src_btn.configure(state=state)
         self.file_btn.configure(state=state)
+        if self._on_change:
+            self._on_change()
 
     def _show_file_menu(self):
         if not self._available_files:
@@ -480,6 +485,13 @@ class App(ctk.CTk):
         self._cfg["supplier_root"] = self._root_var.get()
         self._cfg["output_path"] = str(self._output_sel.path)
         self._cfg["report_path"] = str(self._report_sel.path)
+        self._cfg["supplier_states"] = {
+            row.supplier: {
+                "enabled": row.is_enabled(),
+                "source": row.src_btn.get(),
+            }
+            for row in self._supplier_rows
+        }
         _save_config(self._cfg)
 
     # ── browse / load suppliers ───────────────────────────────────────────────
@@ -520,10 +532,21 @@ class App(ctk.CTk):
         ctk.CTkLabel(hdr, text="Selected File", anchor="w",
                      font=("Arial", 11, "bold")).grid(row=0, column=2, padx=(0, 8), sticky="w")
 
+        saved_states: dict = self._cfg.get("supplier_states", {})
+
         for sup in suppliers:
-            row = SupplierRow(self._supplier_frame_outer, sup, root)
+            row = SupplierRow(self._supplier_frame_outer, sup, root, on_change=self._persist_config)
             row.pack(fill="x", pady=1)
             self._supplier_rows.append(row)
+            # Restore saved state for this supplier
+            if sup in saved_states:
+                state = saved_states[sup]
+                src_label = state.get("source", "Forecast")
+                row.src_btn.set(src_label)
+                row._on_source_change(src_label)  # refresh file list for correct subfolder
+                if not state.get("enabled", True):
+                    row._enabled.set(False)
+                    row._on_toggle()
 
         self._persist_config()
         self._log_msg(f"Detected {len(suppliers)} supplier(s): {', '.join(suppliers)}")
